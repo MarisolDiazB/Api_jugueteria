@@ -226,6 +226,25 @@ def delete_product(product_id: int):
             products_db.pop(index)
             return {"descripcion": "producto eliminado correctamente"}
     raise HTTPException(status_code=404,detail="Producto no encontrado")
+
+@app.get(
+    "/products/filter",
+    response_model=List[Product],
+    summary="Filtrar productos por categoría",
+    tags=["Productos"],
+    responses={
+        200: {"description": "Listado de productos filtrados por categoría"},
+        404: {"description": "No se encontraron productos con esa categoría"}
+    }
+)
+def filter_products(category: str | None = Query(None, description="Filtrar productos por categoría")):
+    if category:
+        filtered = [p for p in products_db if p.category.lower() == category.lower()]
+        if not filtered:
+            raise HTTPException(status_code=404, detail="No se encontraron productos con esa categoría")
+        return filtered
+    return products_db
+
 #Descuentos
 # --- Listaao de Clientes ---
 discounts_db: List[Discount] = [
