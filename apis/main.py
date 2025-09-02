@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List
 
@@ -64,8 +64,6 @@ def get_customer_by_id(customer_id: int):
             return cliente
     raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-def get_customers() -> List[Customer]:
-    return customer_db
 @app.post(
     "/customers",
     status_code=201,
@@ -157,14 +155,13 @@ def get_all_products():
         404: {"description": "Producto no encontrado"}
     }
 )
+
 def get_product_by_id(product_id: int):
     for producto in products_db:
         if producto.id == product_id:
             return producto
     raise HTTPException(status_code=404, detail="Producto no encontrado")
 
-def get_products() -> List[Product]:
-    return products_db
 
 @app.post(
     "/products",
@@ -260,8 +257,6 @@ def get_discount_by_id(discount_id: int):
             return descuento
     raise HTTPException(status_code=404, detail="Descuento no encontrado")
 
-def get_discounts() -> List[Discount]:
-    return discounts_db
 @app.post(
     "/discounts",
     status_code=201,
