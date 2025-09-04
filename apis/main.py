@@ -9,24 +9,27 @@ def inicio():
     return {"mensaje": "Hola Juguetería 🚀"}
 
 # Clientes (id, nombre, Correo)
+from pydantic import BaseModel, Field
+
+# Clientes
 class Customer(BaseModel):
-    id: int 
-    name: str 
-    email: str 
+    id: int = Field(..., example=1001)
+    name: str = Field(..., example="Juan Pérez")
+    email: str = Field(..., example="juanperez@gmail.com")
 
-# productos (id, nombre, stock, precio, categoria)
+# Productos
 class Product(BaseModel):
-    id: int 
-    name: str
-    stock: int 
-    price: float 
-    category: str 
+    id: int = Field(..., example=1)
+    name: str = Field(..., example="Nintendo Switch")
+    stock: int = Field(..., example=10)
+    price: float = Field(..., example=299.99)
+    category: str = Field(..., example="Electrónico")
 
-# descuentos (id_producto , porcentaje_descuento , estado)
+# Descuentos
 class Discount(BaseModel):
-    id: int 
-    discount_percentage: float 
-    flag: bool 
+    id: int = Field(..., example=1)
+    discount_percentage: float = Field(..., example=0.15)  # 15% de descuento
+    flag: bool = Field(..., example=True)  # True = activo, False = inactivo
 
 #Clientes
 # --- Listaao de Clientes ---
@@ -45,6 +48,24 @@ customer_db: List[Customer] = [
     }
 )
 def get_all_customer():
+    return customer_db
+
+@app.get(
+    "/customers/filter",
+    response_model=List[Customer],
+    summary="Filtrar clientes por correo",
+    tags=["Clientes"],
+    responses={
+        200: {"description": "Listado de clientes filtrados por correo"},
+        404: {"description": "No se encontraron clientes con ese correo"}
+    }
+)
+def filter_customers(email: str | None = Query(None, description="Filtrar clientes por correo")):
+    if email:
+        filtered = [c for c in customer_db if c.email.lower() == email.lower()]
+        if not filtered:
+            raise HTTPException(status_code=404, detail="No se encontraron clientes con ese correo")
+        return filtered
     return customer_db
 
 @app.get(
@@ -72,10 +93,10 @@ def get_customer_by_id(customer_id: int):
     tags=["Clientes"],
     responses={
         201: {
-            "descripcion":"cliente creado exitosamente"
+            "description":"cliente creado exitosamente"
         },
         400: {
-            "descripcion": "Id del cliente duplicado"
+            "description": "Id del cliente duplicado"
         }
     }
 )
@@ -97,8 +118,8 @@ def crear_customer(customer: Customer) -> Customer:
     description="Se actualiza el cliente mediante su ID",
     tags=["Clientes"],
     responses={
-        200: {"descripcion": "cliente actualizado correctamente"},
-        404:{"descripcion": "id cliente no se encontro"}
+        200: {"description": "cliente actualizado correctamente"},
+        404:{"description": "id cliente no se encontro"}
     }
 )
 def actualizar_customer(customer_id: int, update_customer: Customer):
@@ -114,15 +135,15 @@ def actualizar_customer(customer_id: int, update_customer: Customer):
     description="Se elimina un cliente de la base de datos por Id",
     tags=["Clientes"],
     responses={
-        200: {"descripcion": "cliente eliminado correctamente"},
-        404:{"descripcion": "id del cliente no encontrado"}
+        200: {"description": "cliente eliminado correctamente"},
+        404:{"description": "id del cliente no encontrado"}
     }
 )
 def delete_customer(customer_id: int):
     for index, cliente_existente in enumerate(customer_db):
         if cliente_existente.id == customer_id:
             customer_db.pop(index)
-            return {"descripcion": "cliente eliminado correctamente"}
+            return {"description": "cliente eliminado correctamente"}
     raise HTTPException(status_code=404,detail="Cliente no encontrado")
 
 #Productos
@@ -143,6 +164,25 @@ products_db: List[Product] = [
     }
 )
 def get_all_products():
+    return products_db
+
+
+@app.get(
+    "/products/filter",
+    response_model=List[Product],
+    summary="Filtrar productos por categoría",
+    tags=["Productos"],
+    responses={
+        200: {"description": "Listado de productos filtrados por categoría"},
+        404: {"description": "No se encontraron productos con esa categoría"}
+    }
+)
+def filter_products(category: str | None = Query(None, description="Filtrar productos por categoría")):
+    if category:
+        filtered = [p for p in products_db if p.category.lower() == category.lower()]
+        if not filtered:
+            raise HTTPException(status_code=404, detail="No se encontraron productos con esa categoría")
+        return filtered
     return products_db
 
 @app.get(
@@ -171,10 +211,10 @@ def get_product_by_id(product_id: int):
     tags=["Productos"],
     responses={
         201: {
-            "descripcion":"producto creado exitosamente"
+            "description":"producto creado exitosamente"
         },
         400: {
-            "descripcion": "Id del producto duplicado"
+            "description": "Id del producto duplicado"
         }
     }
 )
@@ -196,8 +236,8 @@ def crear_product(product: Product) -> Product:
     description="Se actualiza el producto mediante su ID",
     tags=["Productos"],
     responses={
-        200: {"descripcion": "producto actualizado correctamente"},
-        404:{"descripcion": "id del producto no encontrado"}
+        200: {"description": "producto actualizado correctamente"},
+        404:{"description": "id del producto no encontrado"}
     }
 )
 def actualizar_product(product_id: int, update_product: Product):
@@ -213,34 +253,17 @@ def actualizar_product(product_id: int, update_product: Product):
     description="Se elimina un producto de la base de datos por Id",
     tags=["Productos"],
     responses={
-        200: {"descripcion": "producto eliminado correctamente"},
-        404:{"descripcion": "id del producto no encontrado"}
+        200: {"description": "producto eliminado correctamente"},
+        404:{"description": "id del producto no encontrado"}
     }
 )
 def delete_product(product_id: int):
     for index, producto_existente in enumerate(products_db):
         if producto_existente.id == product_id:
             products_db.pop(index)
-            return {"descripcion": "producto eliminado correctamente"}
+            return {"description": "producto eliminado correctamente"}
     raise HTTPException(status_code=404,detail="Producto no encontrado")
 
-@app.get(
-    "/products/filter",
-    response_model=List[Product],
-    summary="Filtrar productos por categoría",
-    tags=["Productos"],
-    responses={
-        200: {"description": "Listado de productos filtrados por categoría"},
-        404: {"description": "No se encontraron productos con esa categoría"}
-    }
-)
-def filter_products(category: str | None = Query(None, description="Filtrar productos por categoría")):
-    if category:
-        filtered = [p for p in products_db if p.category.lower() == category.lower()]
-        if not filtered:
-            raise HTTPException(status_code=404, detail="No se encontraron productos con esa categoría")
-        return filtered
-    return products_db
 
 #Descuentos
 # --- Listaao de Clientes ---
@@ -284,10 +307,10 @@ def get_discount_by_id(discount_id: int):
     tags=["Descuentos"],
     responses={
         201: {
-            "descripcion":"descuento creado exitosamente"
+            "description":"descuento creado exitosamente"
         },
         400: {
-            "descripcion": "Id del descuento duplicado"
+            "description": "Id del descuento duplicado"
         }
     }
 )
@@ -309,8 +332,8 @@ def crear_discount(discount: Discount) -> Discount:
     description="Se actualiza el descuento mediante su ID",
     tags=["Descuentos"],
     responses={
-        200: {"descripcion": "descuento actualizado correctamente"},
-        404:{"descripcion": "id del descuento no encontrado"}
+        200: {"description": "descuento actualizado correctamente"},
+        404:{"description": "id del descuento no encontrado"}
     }
 )
 def actualizar_discount(discount_id: int, update_discount: Discount):
@@ -326,13 +349,13 @@ def actualizar_discount(discount_id: int, update_discount: Discount):
     description="Se elimina un descuento de la base de datos por Id",
     tags=["Descuentos"],
     responses={
-        200: {"descripcion": "descuento eliminado correctamente"},
-        404:{"descripcion": "id del descuento no encontrado"}
+        200: {"description": "descuento eliminado correctamente"},
+        404:{"description": "id del descuento no encontrado"}
     }
 )
 def delete_discount(discount_id: int):
     for index, discount_existente in enumerate(discounts_db):
         if discount_existente.id == discount_id:
             discounts_db.pop(index)
-            return {"descripcion": "descuento eliminado correctamente"}
+            return {"description": "descuento eliminado correctamente"}
     raise HTTPException(status_code=404,detail="Descuento no encontrado")
