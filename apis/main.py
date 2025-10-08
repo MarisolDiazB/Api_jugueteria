@@ -1,18 +1,27 @@
 from fastapi import FastAPI
-from routers import customers, products, discounts , categories , suppliers, orders ,order_items
+from fastapi.middleware.cors import CORSMiddleware
+
+from apis.routers import auth, customers, categories
 
 
-app = FastAPI()
+app = FastAPI(title="API Juguetería")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
-def inicio():
+def root():
     return {"mensaje": "Hola Juguetería 🚀"}
 
-# Incluir routers
+app.include_router(auth.router)       
+app.include_router(categories.router) 
 app.include_router(customers.router)
-app.include_router(products.router)
-app.include_router(discounts.router)
-app.include_router(categories.router)
-app.include_router(suppliers.router)
-app.include_router(orders.router)
-app.include_router(order_items.router)
+
+
+
