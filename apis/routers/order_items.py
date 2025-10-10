@@ -1,59 +1,55 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
-from models import OrderItem
-from db import order_items_db, orders_db, products_db
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-router = APIRouter(
-    prefix="/order-items",
-    tags=["Order Items"]
-)
+from database.connection import get_db
+from apis.models import OrderItem, Order, Product
+from apis.schemas import OrderItemIn, OrderItemOut, OrderItemUpdate
+from apis.routers.auth import get_current_user
 
-# Obtener todos los items
-@router.get("", response_model=List[OrderItem])
-def get_all_order_items():
-    return order_items_db
+router = APIRouter(prefix="/order_items", tags=["Items de Orden"], dependencies=[Depends(get_current_user)])
 
-# Obtener items por order_id
-@router.get("/order/{order_id}", response_model=List[OrderItem])
-def get_items_by_order(order_id: int):
-    items = [item for item in order_items_db if item.order_id == order_id]
-    if not items:
-        raise HTTPException(status_code=404, detail="No hay items para este pedido")
-    return items
+@router.get("/", response_model=list[OrderItemOut])
+def list_items(db: Session = Depends(get_db)):
+    return db.query(OrderItem).order_by(OrderItem.fecha_creacion.desc()).all()
 
-# Agregar item a un pedido
-@router.post("", response_model=OrderItem, status_code=201)
-def add_order_item(order_item: OrderItem):
-    # Validar id
-    for item in order_items_db:
-        if item.id == order_item.id:
-            raise HTTPException(status_code=400, detail="El ID del item ya existe")
-    # Validar pedido 
-    if not any(order.id == order_item.order_id for order in orders_db):
-        raise HTTPException(status_code=404, detail="El pedido no existe")
-    # Validar producto
-    if not any(product.id == order_item.product_id for product in products_db):
-        raise HTTPException(status_code=404, detail="El producto no existe")
-    order_items_db.append(order_item)
-    return order_item
+@router.get("/{item_id}", response_model=OrderItemOut)
+def get_item(item_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(OrderItem, item_id)
+    if not obj: raise HTTPException(404, "Item no encontrado")
+    return obj
 
-# Actualizar item de pedido
-@router.put("/{item_id}", response_model=OrderItem)
-def update_order_item(item_id: int, update_item: OrderItem):
-    for index, item in enumerate(order_items_db):
-        if item.id == item_id:
-            # 🔒 No cambiar ID
-            if update_item.id != item_id:
-                raise HTTPException(status_code=400, detail="No se puede modificar el ID")
-            order_items_db[index] = update_item
-            return update_item
-    raise HTTPException(status_code=404, detail="Item no encontrado")
+@router.post("/", response_model=OrderItemOut, status_code=status.HTTP_201_CREATED)
+def create_item(payload: OrderItemIn, db: Session = Depends(get_db)):
+    if not db.get(Order, payload.order_id):
+        raise HTTPException(400, "order_id inválido")
+    if not db.get(Product, payload.product_id):
+        raise HTTPException(400, "product_id inválido")
+    obj = OrderItem(**payload.model_dump())
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
 
-# Eliminar item de pedido
-@router.delete("/{item_id}")
-def delete_order_item(item_id: int):
-    for index, item in enumerate(order_items_db):
-        if item.id == item_id:
-            order_items_db.pop(index)
-            return {"detail": "Item eliminado correctamente"}
-    raise HTTPException(status_code=404, detail="Item no encontrado")
+@router.put("/{item_id}", response_model=OrderItemOut)
+def update_item(item_id: UUID, payload: OrderItemIn, db: Session = Depends(get_db)):
+    obj = db.get(OrderItem, item_id)
+    if not obj: raise HTTPException(404, "Item no encontrado")
+    if not db.get(Order, payload.order_id):
+        raise HTTPException(400, "order_id inválido")
+    if not db.get(Product, payload.product_id):
+        raise HTTPException(400, "product_id inválido")
+    for k, v in payload.model_dump().items(): setattr(obj, k, v)
+    db.commit(); db.refresh(obj); return obj
+
+@router.patch("/{item_id}", response_model=OrderItemOut)
+def patch_item(item_id: UUID, payload: OrderItemUpdate, db: Session = Depends(get_db)):
+    obj = db.get(OrderItem, item_id)
+    if not obj: raise HTTPException(404, "Item no encontrado")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items(): setattr(obj, k, v)
+    db.commit(); db.refresh(obj); return obj
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_item(item_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(OrderItem, item_id)
+    if not obj: raise HTTPException(404, "Item no encontrado")
+    db.delete(obj); db.commit()

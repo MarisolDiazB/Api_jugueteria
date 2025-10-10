@@ -1,58 +1,84 @@
-from fastapi import APIRouter, HTTPException, Query
-from typing import List
-from models import Product
-from db import products_db
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-router = APIRouter(
-    prefix="/products",
-    tags=["Productos"]
-)
+from database.connection import get_db
+from apis.models import Product, Category, Supplier
+from apis.schemas import ProductIn, ProductOut, ProductUpdate
+from apis.routers.auth import get_current_user
 
-@router.get("", response_model=List[Product])
-def get_all_products():
-    return products_db
+router = APIRouter(prefix="/products", tags=["Productos"], dependencies=[Depends(get_current_user)])
 
-@router.get("/filter", response_model=List[Product])
-def filter_products(category: str | None = Query(None)):
-    if category:
-        filtered = [p for p in products_db if p.category.lower() == category.lower()]
-        if not filtered:
-            raise HTTPException(status_code=404, detail="No se encontraron productos con esa categoría")
-        return filtered
-    return products_db
+@router.get("/", response_model=list[ProductOut])
+def list_products(q: str | None = Query(None), db: Session = Depends(get_db)):
+    query = db.query(Product)
+    if q:
+        query = query.filter(func.lower(Product.name).like(f"%{q.lower()}%"))
+    return query.order_by(Product.name).all()
 
-@router.get("/{product_id}", response_model=Product)
-def get_product_by_id(product_id: int):
-    for producto in products_db:
-        if producto.id == product_id:
-            return producto
-    raise HTTPException(status_code=404, detail="Producto no encontrado")
+@router.get("/{product_id}", response_model=ProductOut)
+def get_product(product_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Product, product_id)
+    if not obj:
+        raise HTTPException(404, "Producto no encontrado")
+    return obj
 
-@router.post("", status_code=201, response_model=Product)
-def crear_product(product: Product):
-    for p in products_db:
-        if p.id == product.id:
-            raise HTTPException(status_code=400, detail="El ID ya existe")
-        if p.name.lower() == product.name.lower():
-            raise HTTPException(status_code=400, detail="El producto ya existe con ese nombre")
-    products_db.append(product)
-    return product
+@router.post("/", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
+def create_product(payload: ProductIn, db: Session = Depends(get_db)):
+    if not db.get(Category, payload.category_id):
+        raise HTTPException(400, "category_id inválido")
+    if not db.get(Supplier, payload.supplier_id):
+        raise HTTPException(400, "supplier_id inválido")
+    if db.query(Product).filter(func.lower(Product.name) == payload.name.lower()).first():
+        raise HTTPException(409, "El producto ya existe con ese nombre")
+    obj = Product(**payload.model_dump())
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
 
-@router.put("/{product_id}", response_model=Product)
-def actualizar_product(product_id: int, update_product: Product):
-    for index, producto_existente in enumerate(products_db):
-        if producto_existente.id == product_id:
-            # 🔒 Blindar ID
-            if update_product.id != producto_existente.id:
-                raise HTTPException(status_code=400, detail="El ID no se puede modificar")
-            products_db[index] = update_product
-            return update_product
-    raise HTTPException(status_code=404, detail="Producto no encontrado")
+@router.put("/{product_id}", response_model=ProductOut)
+def update_product(product_id: UUID, payload: ProductIn, db: Session = Depends(get_db)):
+    obj = db.get(Product, product_id)
+    if not obj:
+        raise HTTPException(404, "Producto no encontrado")
+    if not db.get(Category, payload.category_id):
+        raise HTTPException(400, "category_id inválido")
+    if not db.get(Supplier, payload.supplier_id):
+        raise HTTPException(400, "supplier_id inválido")
+    conflict = db.query(Product).filter(
+        func.lower(Product.name) == payload.name.lower(), Product.id != product_id
+    ).first()
+    if conflict:
+        raise HTTPException(409, "Otro producto ya usa ese nombre")
+    for k, v in payload.model_dump().items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
 
-@router.delete("/{product_id}")
-def delete_product(product_id: int):
-    for index, producto_existente in enumerate(products_db):
-        if producto_existente.id == product_id:
-            products_db.pop(index)
-            return {"description": "producto eliminado correctamente"}
-    raise HTTPException(status_code=404, detail="Producto no encontrado")
+@router.patch("/{product_id}", response_model=ProductOut)
+def patch_product(product_id: UUID, payload: ProductUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Product, product_id)
+    if not obj:
+        raise HTTPException(404, "Producto no encontrado")
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        conflict = db.query(Product).filter(
+            func.lower(Product.name) == data["name"].lower(), Product.id != product_id
+        ).first()
+        if conflict:
+            raise HTTPException(409, "Otro producto ya usa ese nombre")
+    if "category_id" in data and data["category_id"] and not db.get(Category, data["category_id"]):
+        raise HTTPException(400, "category_id inválido")
+    if "supplier_id" in data and data["supplier_id"] and not db.get(Supplier, data["supplier_id"]):
+        raise HTTPException(400, "supplier_id inválido")
+    for k, v in data.items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(product_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Product, product_id)
+    if not obj:
+        raise HTTPException(404, "Producto no encontrado")
+    db.delete(obj); db.commit()

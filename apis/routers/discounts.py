@@ -1,51 +1,70 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
-from models import Discount
-from db import discounts_db, products_db
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-router = APIRouter(
-    prefix="/discounts",
-    tags=["Descuentos"]
-)
+from database.connection import get_db
+from apis.models import Discount
+from apis.schemas import DiscountIn, DiscountOut, DiscountUpdate
+from apis.routers.auth import get_current_user
 
-@router.get("", response_model=List[Discount])
-def get_all_discounts():
-    return discounts_db
+router = APIRouter = APIRouter (prefix="/discounts", tags=["Descuentos"], dependencies=[Depends(get_current_user)])
 
-@router.get("/{discount_id}", response_model=Discount)
-def get_discount_by_id(discount_id: int):
-    for descuento in discounts_db:
-        if descuento.id == discount_id:
-            return descuento
-    raise HTTPException(status_code=404, detail="Descuento no encontrado")
+@router.get("/", response_model=list[DiscountOut])
+def list_discounts(q: str | None = Query(None), db: Session = Depends(get_db)):
+    query = db.query(Discount)
+    if q:
+        query = query.filter(func.lower(Discount.name).like(f"%{q.lower()}%"))
+    return query.order_by(Discount.name).all()
 
-@router.post("", status_code=201, response_model=Discount)
-def crear_discount(discount: Discount):
-    for d in discounts_db:
-        if d.id == discount.id:
-            raise HTTPException(status_code=400, detail="El ID ya existe")
-    if not any(p.id == discount.id_product for p in products_db):
-        raise HTTPException(status_code=400, detail="El producto no existe")
-    discounts_db.append(discount)
-    return discount
+@router.get("/{discount_id}", response_model=DiscountOut)
+def get_discount(discount_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Discount, discount_id)
+    if not obj:
+        raise HTTPException(404, "Descuento no encontrado")
+    return obj
 
-@router.put("/{discount_id}", response_model=Discount)
-def actualizar_discount(discount_id: int, update_discount: Discount):
-    for index, descuento_existente in enumerate(discounts_db):
-        if descuento_existente.id == discount_id:
-            # 🔒 Blindar ID
-            if update_discount.id != descuento_existente.id:
-                raise HTTPException(status_code=400, detail="El ID no se puede modificar")
-            if not any(p.id == update_discount.id_product for p in products_db):
-                raise HTTPException(status_code=400, detail="El producto no existe")
-            discounts_db[index] = update_discount
-            return update_discount
-    raise HTTPException(status_code=404, detail="Descuento no encontrado")
+@router.post("/", response_model=DiscountOut, status_code=status.HTTP_201_CREATED)
+def create_discount(payload: DiscountIn, db: Session = Depends(get_db)):
+    if db.query(Discount).filter(func.lower(Discount.name) == payload.name.lower()).first():
+        raise HTTPException(409, "Ya existe un descuento con ese nombre")
+    obj = Discount(**payload.model_dump())
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
 
-@router.delete("/{discount_id}")
-def delete_discount(discount_id: int):
-    for index, descuento_existente in enumerate(discounts_db):
-        if descuento_existente.id == discount_id:
-            discounts_db.pop(index)
-            return {"description": "descuento eliminado correctamente"}
-    raise HTTPException(status_code=404, detail="Descuento no encontrado")
+@router.put("/{discount_id}", response_model=DiscountOut)
+def update_discount(discount_id: UUID, payload: DiscountIn, db: Session = Depends(get_db)):
+    obj = db.get(Discount, discount_id)
+    if not obj:
+        raise HTTPException(404, "Descuento no encontrado")
+    conflict = db.query(Discount).filter(
+        func.lower(Discount.name) == payload.name.lower(), Discount.id != discount_id
+    ).first()
+    if conflict:
+        raise HTTPException(409, "Otro descuento ya usa ese nombre")
+    for k, v in payload.model_dump().items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.patch("/{discount_id}", response_model=DiscountOut)
+def patch_discount(discount_id: UUID, payload: DiscountUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Discount, discount_id)
+    if not obj:
+        raise HTTPException(404, "Descuento no encontrado")
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        conflict = db.query(Discount).filter(
+            func.lower(Discount.name) == data["name"].lower(), Discount.id != discount_id
+        ).first()
+        if conflict: raise HTTPException(409, "Otro descuento ya usa ese nombre")
+    for k, v in data.items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.delete("/{discount_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_discount(discount_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Discount, discount_id)
+    if not obj: raise HTTPException(404, "Descuento no encontrado")
+    db.delete(obj); db.commit()

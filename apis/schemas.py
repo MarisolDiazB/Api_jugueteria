@@ -147,3 +147,4 @@ class UserOut(AuditBase):
     fecha_creacion: datetime
     fecha_actualizacion: datetime
     model_config = {"from_attributes": True}
+

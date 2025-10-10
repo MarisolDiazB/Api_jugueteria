@@ -1,58 +1,72 @@
-from fastapi import APIRouter, HTTPException, Query
-from typing import List
-from models import Supplier
-from db import suppliers_db
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-router = APIRouter(
-    prefix="/suppliers",
-    tags=["Proveedores"]
-)
+from database.connection import get_db
+from apis.models import Supplier
+from apis.schemas import SupplierIn, SupplierOut, SupplierUpdate
+from apis.routers.auth import get_current_user
 
-@router.get("", response_model=List[Supplier])
-def get_all_suppliers():
-    return suppliers_db
+router = APIRouter(prefix="/suppliers", tags=["Proveedores"], dependencies=[Depends(get_current_user)])
 
-@router.get("/filter", response_model=List[Supplier])
-def filter_suppliers(name: str | None = Query(None)):
-    if name:
-        filtered = [p for p in suppliers_db if p.name.lower() == name.lower()]
-        if not filtered:
-            raise HTTPException(status_code=404, detail="No se encontraron proveedores con ese nombre")
-        return filtered
-    return suppliers_db
+@router.get("/", response_model=list[SupplierOut])
+def list_suppliers(q: str | None = Query(None), db: Session = Depends(get_db)):
+    query = db.query(Supplier)
+    if q:
+        query = query.filter(func.lower(Supplier.name).like(f"%{q.lower()}%"))
+    return query.order_by(Supplier.name).all()
 
-@router.get("/{supplier_id}", response_model=Supplier)
-def get_supplier_by_id(supplier_id: int):
-    for proveedor in suppliers_db:
-        if proveedor.id == supplier_id:
-            return proveedor
-    raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+@router.get("/{supplier_id}", response_model=SupplierOut)
+def get_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, "Proveedor no encontrado")
+    return obj
 
-@router.post("", status_code=201, response_model=Supplier)
-def crear_supplier(supplier: Supplier):
-    for p in suppliers_db:
-        if p.id == supplier.id:
-            raise HTTPException(status_code=400, detail="El ID ya existe")
-        if p.name.lower() == supplier.name.lower():
-            raise HTTPException(status_code=400, detail="La proveedor ya existe con ese nombre")
-    suppliers_db.append(supplier)
-    return supplier
+@router.post("/", response_model=SupplierOut, status_code=status.HTTP_201_CREATED)
+def create_supplier(payload: SupplierIn, db: Session = Depends(get_db)):
+    if db.query(Supplier).filter(func.lower(Supplier.name) == payload.name.lower()).first():
+        raise HTTPException(409, "El proveedor ya existe con ese nombre")
+    obj = Supplier(**payload.model_dump())
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
 
-@router.put("/{supplier_id}", response_model=Supplier)
-def actualizar_supplier(supplier_id: int, update_supplier: Supplier):
-    for index, proveedor_existente in enumerate(suppliers_db):
-        if proveedor_existente.id == supplier_id:
-            # 🔒 Blindar ID
-            if update_supplier.id != proveedor_existente.id:
-                raise HTTPException(status_code=400, detail="El ID no se puede modificar")
-            suppliers_db[index] = update_supplier
-            return update_supplier
-    raise HTTPException(status_code=404, detail="Proveedor no encontrada")
+@router.put("/{supplier_id}", response_model=SupplierOut)
+def update_supplier(supplier_id: UUID, payload: SupplierIn, db: Session = Depends(get_db)):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, "Proveedor no encontrado")
+    conflict = db.query(Supplier).filter(
+        func.lower(Supplier.name) == payload.name.lower(), Supplier.id != supplier_id
+    ).first()
+    if conflict:
+        raise HTTPException(409, "Otro proveedor ya usa ese nombre")
+    for k, v in payload.model_dump().items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
 
-@router.delete("/{supplier_id}")
-def delete_supplier(supplier_id: int):
-    for index, proveedor_existente in enumerate(suppliers_db):
-        if proveedor_existente.id == supplier_id:
-            suppliers_db.pop(index)
-            return {"description": "Proveedor eliminado correctamente"}
-    raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+@router.patch("/{supplier_id}", response_model=SupplierOut)
+def patch_supplier(supplier_id: UUID, payload: SupplierUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, "Proveedor no encontrado")
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        conflict = db.query(Supplier).filter(
+            func.lower(Supplier.name) == data["name"].lower(), Supplier.id != supplier_id
+        ).first()
+        if conflict:
+            raise HTTPException(409, "Otro proveedor ya usa ese nombre")
+    for k, v in data.items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.delete("/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_supplier(supplier_id: UUID, db: Session = Depends(get_db)):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, "Proveedor no encontrado")
+    db.delete(obj); db.commit()
