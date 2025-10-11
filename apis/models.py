@@ -13,7 +13,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, 
 from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from database.connection import Base
+from database.base import Base
 
 
 class AuditMixin:

@@ -1,3 +1,11 @@
+"""
+Módulo de gestión de categorías.
+--------------------------------
+
+Este router maneja las operaciones CRUD para las categorías de productos en la API.
+Incluye protección mediante autenticación JWT, validación de nombres duplicados
+y consultas filtradas insensibles a mayúsculas/minúsculas.
+"""
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func
@@ -21,6 +29,15 @@ def list_categories(
    
     db: Session = Depends(get_db),
 ):
+    """Obtiene una lista de todas las categorías registradas.
+
+    Args:
+        q (str | None): Texto opcional para filtrar categorías por nombre.
+        db (Session): Sesión activa de la base de datos.
+
+    Returns:
+        list[CategoryOut]: Lista de categorías ordenadas por nombre.
+    """
     query = db.query(Category)
     if q:
        
@@ -30,6 +47,18 @@ def list_categories(
 
 @router.get("/{category_id}", response_model=CategoryOut)
 def get_category(category_id: UUID, db: Session = Depends(get_db)):
+    """Obtiene una categoría específica por su ID.
+
+    Args:
+        category_id (UUID): Identificador único de la categoría.
+        db (Session): Sesión activa de la base de datos.
+
+    Raises:
+        HTTPException: Si no se encuentra la categoría.
+
+    Returns:
+        CategoryOut: Datos de la categoría encontrada.
+    """
     obj = db.get(Category, category_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
@@ -37,6 +66,18 @@ def get_category(category_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
 def create_category(payload: CategoryIn, db: Session = Depends(get_db)):
+    """Crea una nueva categoría, validando que no exista un nombre duplicado.
+
+    Args:
+        payload (CategoryIn): Datos de entrada para la nueva categoría.
+        db (Session): Sesión activa de la base de datos.
+
+    Raises:
+        HTTPException: Si ya existe una categoría con el mismo nombre.
+
+    Returns:
+        CategoryOut: Categoría creada y registrada en la base de datos.
+    """
     conflict = (
         db.query(Category)
         .filter(func.lower(Category.name) == func.lower(payload.name))
@@ -58,6 +99,19 @@ def create_category(payload: CategoryIn, db: Session = Depends(get_db)):
 
 @router.put("/{category_id}", response_model=CategoryOut)
 def update_category(category_id: UUID, payload: CategoryIn, db: Session = Depends(get_db)):
+    """Actualiza todos los campos de una categoría existente.
+
+    Args:
+        category_id (UUID): ID de la categoría a actualizar.
+        payload (CategoryIn): Nuevos datos de la categoría.
+        db (Session): Sesión activa de la base de datos.
+
+    Raises:
+        HTTPException: Si la categoría no existe o el nombre ya está en uso.
+
+    Returns:
+        CategoryOut: Categoría actualizada con los nuevos valores.
+    """
     obj = db.get(Category, category_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
@@ -79,6 +133,23 @@ def update_category(category_id: UUID, payload: CategoryIn, db: Session = Depend
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 def patch_category(category_id: UUID, payload: CategoryUpdate, db: Session = Depends(get_db)):
+    
+    """Actualiza parcialmente una categoría existente.
+
+    Solo modifica los campos enviados en el cuerpo de la solicitud.
+    Permite cambiar nombre y descripción con validación de duplicados.
+
+    Args:
+        category_id (UUID): ID de la categoría a modificar.
+        payload (CategoryUpdate): Campos a actualizar (parciales).
+        db (Session): Sesión activa de la base de datos.
+
+    Raises:
+        HTTPException: Si la categoría no existe o hay conflicto de nombre.
+
+    Returns:
+        CategoryOut: Categoría actualizada con los nuevos valores.
+    """
     obj = db.get(Category, category_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")

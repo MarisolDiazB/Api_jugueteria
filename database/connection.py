@@ -1,3 +1,17 @@
+"""
+Módulo de conexión a la base de datos para la API de Juguetería.
+================================================================
+
+Configura la conexión con SQL Server (u otro motor compatible),
+utilizando SQLAlchemy ORM y variables de entorno definidas en `.env`.
+
+Incluye:
+    - Creación del motor de base de datos (`engine`)
+    - Configuración de sesión (`SessionLocal`)
+    - Clase base declarativa (`Base`)
+    - Dependencia `get_db()` para inyección en rutas FastAPI
+    - Funciones auxiliares `create_tables()` y `drop_tables()`
+"""
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase

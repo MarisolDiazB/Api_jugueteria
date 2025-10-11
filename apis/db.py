@@ -1,3 +1,20 @@
+"""
+Base de datos simulada (mock data) para la API de Juguetería.
+-------------------------------------------------------------
+
+Este módulo contiene listas de objetos que simulan registros en la base de datos,
+utilizadas para pruebas locales o demostraciones cuando aún no se conecta
+una base de datos real (SQL Server o MySQL).
+
+Incluye entidades:
+    - Customer (Clientes)
+    - Product (Productos)
+    - Discount (Descuentos)
+    - Category (Categorías)
+    - Supplier (Proveedores)
+    - Order (Órdenes)
+    - OrderItem (Ítems de órdenes)
+"""
 from typing import List
 from datetime import date
 from models import Category, Customer, Product, Discount, Supplier, Order, OrderItem

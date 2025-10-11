@@ -1,3 +1,20 @@
+"""
+Aplicación principal de la API Juguetería 🎮
+--------------------------------------------
+
+Este módulo inicializa la aplicación FastAPI, configura los middlewares,
+define la ruta raíz ("/") y registra todos los routers de la API.
+
+Routers incluidos:
+    - Autenticación (auth)
+    - Clientes (customers)
+    - Categorías (categories)
+    - Proveedores (suppliers)
+    - Productos (products)
+    - Descuentos (discounts)
+    - Órdenes (orders)
+    - Ítems de orden (order_items)
+"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

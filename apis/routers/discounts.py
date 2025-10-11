@@ -1,3 +1,16 @@
+"""
+Módulo de gestión de descuentos.
+--------------------------------
+
+Proporciona endpoints REST para listar, crear, actualizar y eliminar descuentos
+en el sistema. Todos los endpoints requieren autenticación JWT mediante el
+dependencia `get_current_user`.
+
+Incluye:
+    - Filtros por nombre (insensible a mayúsculas/minúsculas).
+    - Validación de nombres duplicados.
+    - Soporte para actualización total y parcial (PUT/PATCH).
+"""
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
@@ -12,6 +25,15 @@ router = APIRouter = APIRouter (prefix="/discounts", tags=["Descuentos"], depend
 
 @router.get("/", response_model=list[DiscountOut])
 def list_discounts(q: str | None = Query(None), db: Session = Depends(get_db)):
+    """Obtiene una lista de descuentos existentes, con filtro opcional por nombre.
+
+    Args:
+        q (str | None): Texto para buscar por nombre (no distingue mayúsculas/minúsculas).
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Returns:
+        list[DiscountOut]: Lista de descuentos ordenados por nombre.
+    """
     query = db.query(Discount)
     if q:
         query = query.filter(func.lower(Discount.name).like(f"%{q.lower()}%"))
@@ -19,6 +41,18 @@ def list_discounts(q: str | None = Query(None), db: Session = Depends(get_db)):
 
 @router.get("/{discount_id}", response_model=DiscountOut)
 def get_discount(discount_id: UUID, db: Session = Depends(get_db)):
+    """Obtiene los datos de un descuento específico mediante su ID.
+
+    Args:
+        discount_id (UUID): Identificador único del descuento.
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Raises:
+        HTTPException: Si el descuento no se encuentra en la base de datos.
+
+    Returns:
+        DiscountOut: Información del descuento encontrado.
+    """
     obj = db.get(Discount, discount_id)
     if not obj:
         raise HTTPException(404, "Descuento no encontrado")
@@ -26,6 +60,18 @@ def get_discount(discount_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=DiscountOut, status_code=status.HTTP_201_CREATED)
 def create_discount(payload: DiscountIn, db: Session = Depends(get_db)):
+    """Crea un nuevo descuento, verificando que el nombre no exista previamente.
+
+    Args:
+        payload (DiscountIn): Datos del nuevo descuento.
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Raises:
+        HTTPException: Si ya existe un descuento con el mismo nombre.
+
+    Returns:
+        DiscountOut: Descuento creado con éxito.
+    """
     if db.query(Discount).filter(func.lower(Discount.name) == payload.name.lower()).first():
         raise HTTPException(409, "Ya existe un descuento con ese nombre")
     obj = Discount(**payload.model_dump())
@@ -34,6 +80,21 @@ def create_discount(payload: DiscountIn, db: Session = Depends(get_db)):
 
 @router.put("/{discount_id}", response_model=DiscountOut)
 def update_discount(discount_id: UUID, payload: DiscountIn, db: Session = Depends(get_db)):
+    """Actualiza completamente los datos de un descuento existente.
+
+    Args:
+        discount_id (UUID): ID del descuento a actualizar.
+        payload (DiscountIn): Nuevos datos del descuento.
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Raises:
+        HTTPException:
+            - 404: Si el descuento no existe.
+            - 409: Si otro descuento ya utiliza el mismo nombre.
+
+    Returns:
+        DiscountOut: Descuento actualizado correctamente.
+    """
     obj = db.get(Discount, discount_id)
     if not obj:
         raise HTTPException(404, "Descuento no encontrado")
@@ -49,6 +110,21 @@ def update_discount(discount_id: UUID, payload: DiscountIn, db: Session = Depend
 
 @router.patch("/{discount_id}", response_model=DiscountOut)
 def patch_discount(discount_id: UUID, payload: DiscountUpdate, db: Session = Depends(get_db)):
+    """Actualiza parcialmente los datos de un descuento (PATCH).
+
+    Args:
+        discount_id (UUID): Identificador único del descuento.
+        payload (DiscountUpdate): Campos a modificar (solo los enviados).
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Raises:
+        HTTPException:
+            - 404: Si el descuento no existe.
+            - 409: Si el nuevo nombre ya está siendo usado.
+
+    Returns:
+        DiscountOut: Descuento actualizado parcialmente.
+    """
     obj = db.get(Discount, discount_id)
     if not obj:
         raise HTTPException(404, "Descuento no encontrado")
@@ -65,6 +141,18 @@ def patch_discount(discount_id: UUID, payload: DiscountUpdate, db: Session = Dep
 
 @router.delete("/{discount_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_discount(discount_id: UUID, db: Session = Depends(get_db)):
+    """Elimina un descuento existente de la base de datos.
+
+    Args:
+        discount_id (UUID): Identificador único del descuento.
+        db (Session): Sesión activa de SQLAlchemy.
+
+    Raises:
+        HTTPException: Si el descuento no existe.
+
+    Returns:
+        None
+    """
     obj = db.get(Discount, discount_id)
     if not obj: raise HTTPException(404, "Descuento no encontrado")
     db.delete(obj); db.commit()
